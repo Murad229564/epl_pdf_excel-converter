@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoCarton PO Converter — Epyllion</title>
+<style>
+  :root {
+    --ink: #1c2b23;
+    --paper: #f6f4ee;
+    --card: #ffffff;
+    --line: #d8d3c4;
+    --brown: #7a4a2c;
+    --brown-dark: #5c3620;
+    --ok: #3f6b4a;
+    --err: #a33d2f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', 'Noto Sans Bengali', Arial, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .wrap { max-width: 640px; width: 100%; }
+  header { margin-bottom: 28px; }
+  .tag {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--brown);
+    font-weight: 700;
+  }
+  h1 {
+    font-size: 26px;
+    margin: 6px 0 4px;
+    line-height: 1.25;
+  }
+  .sub { color: #5b5b52; font-size: 14px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 18px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 14px 0 6px;
+  }
+  label:first-child { margin-top: 0; }
+  label .req { color: var(--err); }
+  select, input[type=text], input[type=date] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 14px;
+    background: #fdfcf9;
+  }
+  .radio-group { display: flex; gap: 16px; margin-top: 4px; }
+  .radio-group label { display: flex; align-items: center; gap: 6px; font-weight: 500; margin: 0; }
+  .drop {
+    border: 2px dashed var(--line);
+    border-radius: 8px;
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .drop.drag { border-color: var(--brown); background: #fbf3ec; }
+  .drop p { margin: 4px 0; font-size: 14px; }
+  .drop .fname { font-weight: 700; color: var(--brown-dark); }
+  input[type=file] { display: none; }
+
+  button {
+    width: 100%;
+    margin-top: 18px;
+    padding: 13px;
+    border: none;
+    border-radius: 6px;
+    background: var(--brown);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  button:hover { background: var(--brown-dark); }
+  button:disabled { background: #b7ab9c; cursor: not-allowed; }
+
+  .status { margin-top: 14px; font-size: 13px; min-height: 18px; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--err); }
+
+  .hint {
+    font-size: 12px;
+    color: #7a7a70;
+    margin-top: 6px;
+  }
+  .field-err { font-size: 12px; color: var(--err); margin-top: 4px; display: none; }
+  footer { text-align: center; font-size: 12px; color: #948d7d; margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="tag">Epyllion · AutoCarton</div>
+    <h1>PO থেকে Order Upload Template</h1>
+    <div class="sub">PDF আপলোড করুন — সিস্টেম নিজে থেকে ডাটা বের করে একটাই Excel ফাইল বানিয়ে দেবে</div>
+  </header>
+
+  <form class="card" id="poForm">
+    <label for="customer_type">Customer টাইপ</label>
+    <select id="customer_type" name="customer_type">
+      <option value="IN-HOUSE">IN-HOUSE (Epyllion সিস্টার কোম্পানি)</option>
+      <option value="OUT-HOUSE">OUT-HOUSE (সাধারণ Customer)</option>
+    </select>
+
+    <label for="customer_name">Customer নাম (ফাঁকা রাখলে PDF থেকে অটো নেওয়া হবে)</label>
+    <input type="text" id="customer_name" name="customer_name" list="customer_list" placeholder="লিস্ট থেকে বাছুন বা লিখে সার্চ করুন" autocomplete="off">
+    <datalist id="customer_list"></datalist>
+    <div class="field-err" id="customer_err">এই নামটা লিস্টের সাথে হুবহু (case-sensitive) মিলছে না — লিস্ট থেকে সিলেক্ট করুন</div>
+
+    <label for="buyer_name">Buyer নাম <span class="req">*আবশ্যক</span></label>
+    <input type="text" id="buyer_name" name="buyer_name" list="buyer_list" placeholder="লিস্ট থেকে বাছুন বা লিখে সার্চ করুন" autocomplete="off" required>
+    <datalist id="buyer_list"></datalist>
+    <div class="field-err" id="buyer_err">Buyer নাম আবশ্যক এবং অবশ্যই লিস্টের সাথে হুবহু (case-sensitive) মিলতে হবে</div>
+
+    <label for="po_number">PO Number (ফাঁকা রাখলে PDF থেকে অটো নেওয়া হবে)</label>
+    <input type="text" id="po_number" name="po_number" placeholder="ম্যানুয়ালি দিলে PDF-এর PO Number-এর সাথে মিলতে হবে" autocomplete="off">
+    <div class="field-err" id="po_err">এই PO Number আপলোড করা PDF-এর সাথে মিলছে না</div>
+
+    <label>Delivery Date</label>
+    <div class="radio-group">
+      <label><input type="radio" name="delivery_mode" value="auto" checked> Auto (ডিফল্ট)</label>
+      <label><input type="radio" name="delivery_mode" value="manual"> Manual (নিজে বসাব)</label>
+    </div>
+    <div id="autoDateHint" class="hint">Auto মোডে ডেট বসবে: আজকের তারিখ থেকে ৭ দিন পরের প্রথম শুক্রবার, সরকারি ছুটি বাদে।</div>
+    <div id="manualDateWrap" style="display:none; margin-top:8px;">
+      <input type="date" id="delivery_date" name="delivery_date">
+      <div class="field-err" id="date_err">Delivery Date অবশ্যই আজকের তারিখ থেকে ন্যূনতম ৪ দিন পরে হতে হবে</div>
+    </div>
+
+    <label for="delivery_address">Delivery Address (Customer অনুযায়ী ফিল্টার হবে)</label>
+    <select id="delivery_address" name="delivery_address">
+      <option value="">-- এখনো কোনো ঠিকানা যোগ করা হয়নি --</option>
+    </select>
+    <div class="hint">Customer-ওয়াইজ ঠিকানার লিস্ট এখনো যোগ করা হয়নি — data দিলে এখানে বসিয়ে দেওয়া হবে।</div>
+
+    <label for="method">প্রসেসিং মেথড</label>
+    <select id="method" name="method">
+      <option value="rule_based">Rule-Based (Epyllion PO ফরম্যাট) — এখন সচল</option>
+      <option value="ai_based" disabled>AI-Based (যেকোনো বায়ার ফরম্যাট) — শীঘ্রই আসছে</option>
+    </select>
+
+    <label>PO PDF ফাইল</label>
+    <div class="drop" id="dropZone">
+      <p id="dropText">এখানে PDF টেনে আনুন, বা ক্লিক করে সিলেক্ট করুন</p>
+      <p class="fname" id="fileName"></p>
+      <input type="file" id="fileInput" accept="application/pdf">
+    </div>
+    <div class="hint">শুধুমাত্র এই একই PO ফরম্যাটের PDF সাপোর্ট করবে (EWO/Style/Ply/Measurement টেবিলসহ)।</div>
+
+    <button type="submit" id="submitBtn">Process করে Excel ডাউনলোড করুন</button>
+    <div class="status" id="statusMsg"></div>
+  </form>
+
+  <footer>Created by Murad Hossain · Epyllion Limited</footer>
+</div>
+
+<script>
+const CUSTOMERS = {{ customers | tojson }};
+const BUYERS = {{ buyers | tojson }};
+const DELIVERY_ADDRESSES = {{ delivery_addresses | tojson }};
+
+const customerTypeSel = document.getElementById('customer_type');
+const customerNameInput = document.getElementById('customer_name');
+const customerList = document.getElementById('customer_list');
+const buyerList = document.getElementById('buyer_list');
+const deliveryAddressSel = document.getElementById('delivery_address');
+const customerErr = document.getElementById('customer_err');
+const buyerErr = document.getElementById('buyer_err');
+const dateErr = document.getElementById('date_err');
+
+function fillCustomerOptions() {
+  const list = CUSTOMERS[customerTypeSel.value] || [];
+  customerList.innerHTML = list.map(c => `<option value="${c}">`).join('');
+}
+function fillBuyerOptions() {
+  buyerList.innerHTML = BUYERS.map(b => `<option value="${b}">`).join('');
+}
+function fillDeliveryAddressOptions() {
+  const addresses = DELIVERY_ADDRESSES[customerNameInput.value] || [];
+  if (addresses.length === 0) {
+    deliveryAddressSel.innerHTML = '<option value="">-- এই Customer-এর জন্য এখনো কোনো ঠিকানা যোগ করা হয়নি --</option>';
+  } else {
+    deliveryAddressSel.innerHTML = addresses.map(a => `<option value="${a}">${a}</option>`).join('');
+  }
+}
+customerTypeSel.addEventListener('change', () => { fillCustomerOptions(); fillDeliveryAddressOptions(); });
+customerNameInput.addEventListener('input', fillDeliveryAddressOptions);
+fillCustomerOptions();
+fillBuyerOptions();
+fillDeliveryAddressOptions();
+
+// --- Delivery date mode toggle + minimum-date enforcement ---
+const manualDateWrap = document.getElementById('manualDateWrap');
+const autoDateHint = document.getElementById('autoDateHint');
+const deliveryDateInput = document.getElementById('delivery_date');
+const minAllowedDate = new Date();
+minAllowedDate.setDate(minAllowedDate.getDate() + 4);
+const minDateStr = minAllowedDate.toISOString().split('T')[0];
+deliveryDateInput.min = minDateStr;
+
+document.querySelectorAll('input[name="delivery_mode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    const manual = document.querySelector('input[name="delivery_mode"]:checked').value === 'manual';
+    manualDateWrap.style.display = manual ? 'block' : 'none';
+    autoDateHint.style.display = manual ? 'none' : 'block';
+  });
+});
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileName = document.getElementById('fileName');
+const dropText = document.getElementById('dropText');
+const form = document.getElementById('poForm');
+const submitBtn = document.getElementById('submitBtn');
+const statusMsg = document.getElementById('statusMsg');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+  if (e.dataTransfer.files.length) {
+    fileInput.files = e.dataTransfer.files;
+    updateFileName();
+  }
+});
+fileInput.addEventListener('change', updateFileName);
+
+function updateFileName() {
+  if (fileInput.files.length) {
+    fileName.textContent = fileInput.files[0].name;
+    dropText.textContent = 'ফাইল সিলেক্ট হয়েছে:';
+  }
+}
+
+function clientSideValidate() {
+  let ok = true;
+  customerErr.style.display = 'none';
+  buyerErr.style.display = 'none';
+  dateErr.style.display = 'none';
+
+  const custType = customerTypeSel.value;
+  const custName = customerNameInput.value.trim();
+  if (custName && CUSTOMERS[custType] && CUSTOMERS[custType].length && !CUSTOMERS[custType].includes(custName)) {
+    customerErr.style.display = 'block';
+    ok = false;
+  }
+
+  const buyerName = document.getElementById('buyer_name').value.trim();
+  if (!buyerName || !BUYERS.includes(buyerName)) {
+    buyerErr.style.display = 'block';
+    ok = false;
+  }
+
+  const mode = document.querySelector('input[name="delivery_mode"]:checked').value;
+  if (mode === 'manual') {
+    if (!deliveryDateInput.value || deliveryDateInput.value < minDateStr) {
+      dateErr.style.display = 'block';
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!fileInput.files.length) {
+    statusMsg.textContent = 'প্রথমে একটা PDF ফাইল সিলেক্ট করুন';
+    statusMsg.className = 'status err';
+    return;
+  }
+  if (!clientSideValidate()) {
+    statusMsg.textContent = 'উপরের ফিল্ডগুলো ঠিক করুন (লাল দেখানো জায়গাগুলো)';
+    statusMsg.className = 'status err';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('pdf_file', fileInput.files[0]);
+  formData.append('customer_type', customerTypeSel.value);
+  formData.append('customer_name', customerNameInput.value.trim());
+  formData.append('buyer_name', document.getElementById('buyer_name').value.trim());
+  formData.append('po_number', document.getElementById('po_number').value.trim());
+  formData.append('delivery_mode', document.querySelector('input[name="delivery_mode"]:checked').value);
+  formData.append('delivery_date', deliveryDateInput.value);
+  formData.append('delivery_address', deliveryAddressSel.value);
+  formData.append('method', document.getElementById('method').value);
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Processing...';
+  statusMsg.textContent = '';
+
+  try {
+    const res = await fetch('/process', { method: 'POST', body: formData });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'কিছু একটা সমস্যা হয়েছে');
+    }
+    const warnCount = parseInt(res.headers.get('X-Warning-Count') || '0');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileInput.files[0].name.replace('.pdf', '').replace('.PDF','') + '_Output.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    let msg = 'সম্পন্ন হয়েছে — Excel ফাইল ডাউনলোড হচ্ছে';
+    if (warnCount > 0) msg += ` — ⚠️ ${warnCount}টা রো-তে জরুরি তথ্য মিসিং, Excel-এর "Warnings" শীট দেখুন`;
+    statusMsg.textContent = msg;
+    statusMsg.className = warnCount > 0 ? 'status err' : 'status ok';
+  } catch (err) {
+    statusMsg.textContent = err.message;
+    statusMsg.className = 'status err';
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Process করে Excel ডাউনলোড করুন';
+  }
+});
+</script>
+</body>
+</html>
