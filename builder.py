@@ -2,6 +2,7 @@ import os
 from copy import copy
 from openpyxl import load_workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
+from config import ITEM_NAME_ALIASES, resolve_alias
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'template_files')
 TEMPLATE_PATHS = {
@@ -66,23 +67,63 @@ def _write_df_sheet(wb, sheet_name, df):
         cell.font = Font(bold=True)
 
 
+def _strip_external_links(wb):
+    """Excel-এ ফাইল ওপেন করলে মাঝেমধ্যে 'We found a problem with some content'
+    / 'Repairs to ...xlsx' ওয়ার্নিং আসার প্রধান কারণ হলো ওয়ার্কবুকের ভেতরে
+    অন্য কোনো external xlsx ফাইলের রেফারেন্স (externalLinks) থেকে যাওয়া —
+    এটা সাধারণত টেমপ্লেট ফাইলটা কখনো অন্য কোনো ওয়ার্কবুক থেকে কপি-পেস্ট বা
+    ফর্মুলা-লিংক করে বানানোর সময় ঢুকে যায়। এই ফাংশনটা সবসময় (প্রতিটা আউটপুট
+    ফাইল বানানোর সময়) যেকোনো external link/reference মুছে দেয়, টেমপ্লেটে এটা
+    থাকুক বা না থাকুক — যাতে ভবিষ্যতে টেমপ্লেট আপডেট হলেও এই সমস্যা আর
+    কখনো ফিরে না আসে।"""
+    try:
+        if getattr(wb, '_external_links', None):
+            wb._external_links = []
+    except Exception:
+        pass
+    try:
+        if hasattr(wb, '_external_references'):
+            wb._external_references = []
+    except Exception:
+        pass
+
+
+def _matches_u_divider_measurement(length, width):
+    """MARKS & SPENCER SCM LTD.-এর জন্য একটা স্পেশাল বিজনেস রুল: Length/Width
+    এই দুটো নির্দিষ্ট কম্বিনেশনের একটার সাথে মিললে Item Name 'U Divider' হবে
+    (অন্য কোনো buyer-এর ক্ষেত্রে এটা প্রযোজ্য না)।"""
+    try:
+        l = round(float(str(length).replace(',', '').strip()))
+        w = round(float(str(width).replace(',', '').strip()))
+    except (ValueError, TypeError):
+        return False
+    return (l, w) in {(93, 36), (51, 41)}
+
+
 def build_combined_excel(line_items, header_info, out_path, profile='IN-HOUSE',
                           customer_override=None, buyer_override=None,
                           po_override=None, delivery_date='', delivery_address='',
-                          raw_df=None, summary_df=None, warnings=None):
+                          raw_df=None, summary_df=None, warnings=None,
+                          remark_place=False, remark_address=False):
     """একটাই .xlsx ফাইল বানায় — zip আর দরকার নেই। শীটগুলো:
     - Sheet1        : Mapped Template (এটাই ওপেন হলে সবার আগে দেখা যাবে)
     - Raw Data      : canonical raw extracted line items
     - PO Details    : PDF-এ যেভাবে কলাম ছিল ঠিক সেভাবে (অরিজিনাল হেডিং)
     - PO Summary    : PDF-এর প্রথম পাতার Business Line সামারি টেবিল (থাকলে)
     - Warnings      : must-have ফিল্ড মিসিং থাকলে (থাকলে)
+
+    remark_place / remark_address: UI-র দুটো চেকমার্ক। চেক করা থাকলে PDF থেকে
+    পাওয়া সেই row-এর Delivery Place / Delivery Address ভ্যালুটা Remarks কলামে
+    (এবং তার পরের কলামে) বসে যাবে। দুটো আনচেক থাকলে (ডিফল্ট) Remarks ফাঁকাই থাকবে।
     """
     wb = load_workbook(TEMPLATE_PATHS[profile])
+    _strip_external_links(wb)
     ws = wb['Sheet1']
 
     ws['B2'] = po_override or header_info.get('po_number', '') or 'N/A'
     ws['B3'] = customer_override or header_info.get('customer', '') or 'N/A'
-    ws['B4'] = buyer_override or header_info.get('buyer', '') or 'N/A'
+    effective_buyer = buyer_override or header_info.get('buyer', '') or ''
+    ws['B4'] = effective_buyer or 'N/A'
 
     sample_row = 8
     n_cols = 19
@@ -95,11 +136,25 @@ def build_combined_excel(line_items, header_info, out_path, profile='IN-HOUSE',
     # In-House প্রোফাইলে Color/Size বসানোর দরকার নেই — PDF-এ থাকলেও সবসময় N/A
     force_na = profile == 'IN-HOUSE'
 
+    # Remarks (S) ও তার পরের কলাম (T) — শুধু চেকমার্ক করা থাকলেই ব্যবহার হবে।
+    # T কলামে যদি এখনো কোনো হেডার না থাকে, একটা হেডার বসিয়ে দেওয়া হচ্ছে
+    # (টেমপ্লেটের বিদ্যমান কোনো কলাম/ফরম্যাট ভাঙা হচ্ছে না)।
+    if remark_address and not ws.cell(row=7, column=20).value:
+        ws.cell(row=7, column=20, value='Delivery Address')
+
     start_row = 8
     for i, r in enumerate(line_items):
         row = start_row + i
+        remarks_val = na_if_blank(r.get('delivery_place_pdf')) if remark_place else ''
+        address_remark_val = na_if_blank(r.get('delivery_address_pdf')) if remark_address else ''
+
+        item_name_val = na_if_blank(resolve_alias(r.get('item_name'), ITEM_NAME_ALIASES))
+        if effective_buyer == 'MARKS & SPENCER SCM LTD.' and _matches_u_divider_measurement(
+                r.get('length', ''), r.get('width', '')):
+            item_name_val = 'U Divider'
+
         values = [
-            na_if_blank(r.get('item_name')),        # A Item Name
+            item_name_val,                            # A Item Name (ERP নামে অটো-কারেক্ট + M&S স্পেশাল রুল)
             na_if_blank(r.get('ewo_no')),            # B Gmt. EWO No
             na_if_blank(r.get('style_no')),          # C Gmt. Style No
             na_if_blank(r.get('po_no')),             # D Gmt. PO
@@ -117,15 +172,18 @@ def build_combined_excel(line_items, header_info, out_path, profile='IN-HOUSE',
             to_num(r.get('qty', '')),                                     # P Order Qty
             delivery_date or '',                                            # Q Delivery Date
             delivery_address or '',                                          # R Delivery Place
-            '',                                                                 # S Remarks
+            remarks_val,                                                       # S Remarks (checkbox-এ Delivery Place)
         ]
+        if remark_address:
+            values.append(address_remark_val)  # T Delivery Address (checkbox-এ, PDF থেকে)
         for c, val in enumerate(values, start=1):
             cell = ws.cell(row=row, column=c, value=val)
-            cell.font = style_ref[c - 1]
-            cell.fill = fill_ref[c - 1]
-            cell.alignment = align_ref[c - 1]
-            cell.border = border_ref[c - 1]
-            cell.number_format = numfmt_ref[c - 1]
+            style_c = min(c, n_cols) - 1
+            cell.font = style_ref[style_c]
+            cell.fill = fill_ref[style_c]
+            cell.alignment = align_ref[style_c]
+            cell.border = border_ref[style_c]
+            cell.number_format = numfmt_ref[style_c]
 
     import pandas as pd
     _write_df_sheet(wb, 'Raw Data', pd.DataFrame(line_items))

@@ -10,8 +10,8 @@
     --paper: #f6f4ee;
     --card: #ffffff;
     --line: #d8d3c4;
-    --brown: #7a4a2c;
-    --brown-dark: #5c3620;
+    --brown: #2f7a6e;
+    --brown-dark: #1f5850;
     --ok: #3f6b4a;
     --err: #a33d2f;
     --locked-bg: #eef0ec;
@@ -98,7 +98,7 @@
     cursor: pointer;
     transition: border-color .15s, background .15s;
   }
-  .drop.drag { border-color: var(--brown); background: #fbf3ec; }
+  .drop.drag { border-color: var(--brown); background: #eef7f5; }
   .drop p { margin: 3px 0; font-size: 13px; }
   .drop .fname { font-weight: 700; color: var(--brown-dark); }
   input[type=file] { display: none; }
@@ -145,7 +145,7 @@
   }
   .combo-panel.open { display: block; }
   .combo-option { padding: 8px 11px; font-size: 13px; cursor: pointer; }
-  .combo-option:hover, .combo-option.active { background: #fbf3ec; color: var(--brown-dark); }
+  .combo-option:hover, .combo-option.active { background: #eef7f5; color: var(--brown-dark); }
   .combo-empty { padding: 8px 11px; font-size: 12px; color: #948d7d; }
   .combo-clear {
     display: none;
@@ -292,33 +292,32 @@
 <div class="wrap">
   <header>
     <a href="/" class="back-link">← মডিউল লিস্টে ফিরে যান</a>
-    <div class="tag">Epyllion · AutoCarton <span class="module-badge">📦 Auto Carton</span></div>
+    <div class="tag">Epyllion · Thermal <span class="module-badge">🌡️ Thermal</span></div>
     <h1>PO থেকে Order Upload Template</h1>
-    <div class="sub">PDF আপলোড করুন — সিস্টেম নিজে থেকে ডাটা বের করে একটাই Excel ফাইল বানিয়ে দেবে</div>
+    <div class="sub">PDF আপলোড করুন — সিস্টেম নিজে থেকে ডাটা বের করে একটাই Excel ফাইল বানিয়ে দেবে (IN-HOUSE)</div>
   </header>
 
   <form id="poForm">
     <div class="card">
-      <div class="section-title">টাইপ সিলেক্ট করুন</div>
+      <div class="section-title">PDF আপলোড</div>
       <div class="grid">
         <div class="field">
-          <label for="customer_type">Customer টাইপ</label>
-          <select id="customer_type" name="customer_type">
-            <option value="IN-HOUSE">IN-HOUSE</option>
-            <option value="OUT-HOUSE">OUT-HOUSE</option>
+          <label for="method">প্রসেসিং মেথড</label>
+          <select id="method" name="method">
+            <option value="rule_based">Rule-Based — এখন সচল</option>
+            <option value="ai_based" disabled>AI-Based — শীঘ্রই আসছে</option>
           </select>
         </div>
-        <div class="field" id="outhouseFileTypeField" style="display:none;">
-          <label>ফাইল টাইপ</label>
-          <div style="display:flex; gap:16px; margin-top:9px;">
-            <label style="font-weight:400; display:flex; align-items:center; gap:5px; cursor:pointer;">
-              <input type="radio" name="outhouse_file_type" value="pdf" checked> PDF
-            </label>
-            <label style="font-weight:400; display:flex; align-items:center; gap:5px; cursor:pointer;">
-              <input type="radio" name="outhouse_file_type" value="excel"> Excel (একাধিক ফাইল)
-            </label>
-          </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <div class="hint" style="margin-top:9px;">শুধু EWO/Style/Ply/Measurement টেবিল-সহ এই PO ফরম্যাটই সাপোর্ট করবে</div>
         </div>
+      </div>
+
+      <div class="drop" id="dropZone" style="margin-top:10px;">
+        <p id="dropText">এখানে PDF টেনে আনুন, বা ক্লিক করে সিলেক্ট করুন</p>
+        <p class="fname" id="fileName"></p>
+        <input type="file" id="fileInput" accept="application/pdf">
       </div>
     </div>
 
@@ -334,9 +333,22 @@
 
       <div class="grid">
         <div class="field">
+          <label>Customer টাইপ</label>
+          <div style="margin-top:8px;">
+            <span class="module-badge" style="background:var(--brown); margin-left:0;">IN-HOUSE</span>
+          </div>
+          <input type="hidden" id="customer_type" name="customer_type" value="IN-HOUSE">
+        </div>
+        <div class="field">
           <label for="po_number">PO Number</label>
           <input type="text" id="po_number" name="po_number" placeholder="ফাঁকা রাখলে PDF থেকে auto" autocomplete="off">
           <div class="field-err" id="po_err">PO Number আপলোড করা PDF-এর সাথে মিলছে না</div>
+        </div>
+
+        <div class="field full">
+          <label for="measurement">Measurement</label>
+          <input type="text" id="measurement" name="measurement" placeholder="যেমন: 150 X 75MM (ফাঁকা রাখলে পরে ম্যানুয়ালি বসাতে হবে)" autocomplete="off">
+          <div class="hint">PDF-এ Measurement থাকে না — এখানে ম্যানুয়ালি লিখুন। ফাঁকা রাখলে Process করার আগে একটা কনফার্মেশন আসবে।</div>
         </div>
 
         <div class="field full">
@@ -390,55 +402,7 @@
       </div>
     </div>
 
-    <div class="card" id="pdfUploadCard">
-      <div class="section-title">PDF আপলোড</div>
-      <div class="hint">শুধু EWO/Style/Ply/Measurement টেবিল-সহ এই PO ফরম্যাটই সাপোর্ট করবে</div>
-
-      <div class="drop" id="dropZone" style="margin-top:10px;">
-        <p id="dropText">এখানে PDF টেনে আনুন, বা ক্লিক করে সিলেক্ট করুন</p>
-        <p class="fname" id="fileName"></p>
-        <input type="file" id="fileInput" accept="application/pdf">
-      </div>
-    </div>
-
-    <div class="card" id="outhouseExcelCard" style="display:none;">
-      <div class="section-title">OUT-HOUSE — Excel বুকিং ফাইল (একাধিক আপলোড করা যাবে)</div>
-      <div class="hint">একই কাস্টমার/বায়ারের একাধিক বুকিং এক্সেল (.xls/.xlsx) একসাথে সিলেক্ট করুন — সবগুলো আপলোড-ক্রম অনুযায়ী কম্বাইন হয়ে একটাই Excel টেমপ্লেটে বসবে। উপরের Customer/Buyer/Delivery ফিল্ড এই Excel প্রসেসিংয়েও ব্যবহার হবে।</div>
-
-      <div class="grid" style="margin-top:10px;">
-        <div class="field">
-          <label for="outhouse_item_name">Item Name <span class="req">*</span></label>
-          <select id="outhouse_item_name" name="outhouse_item_name">
-            <option value="Master Carton">Master Carton</option>
-            <option value="Elastic Hanger Carton">Elastic Hanger Carton</option>
-            <option value="Both Side Hanger Carton">Both Side Hanger Carton</option>
-          </select>
-          <div class="hint">এক্সেল ফাইলে Item Name থাকে না, তাই এখান থেকে সিলেক্ট করে দিন</div>
-        </div>
-        <div class="field">
-          <label for="outhouse_ply">Ply</label>
-          <select id="outhouse_ply">
-            <option value="">-- ফাইলে থাকলে সেটাই নেওয়া হবে, না থাকলে সিলেক্ট করুন --</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="5">5</option>
-            <option value="7">7</option>
-          </select>
-          <div class="hint">এক্সেলে Ply কলাম থাকলে সেটাই ব্যবহার হবে, না থাকলে এখানে সিলেক্ট করা মান বসবে — ফাঁকা রাখলে Process করার আগে একটা কনফার্মেশন আসবে</div>
-        </div>
-      </div>
-
-      <div class="drop" id="excelDropZone" style="margin-top:10px;">
-        <p id="excelDropText">এখানে একাধিক .xls/.xlsx ফাইল টেনে আনুন, বা ক্লিক করে সিলেক্ট করুন</p>
-        <p class="fname" id="excelFileNames"></p>
-        <input type="file" id="excelFileInput" accept=".xls,.xlsx" multiple>
-      </div>
-      <button type="button" id="excelSubmitBtn" style="margin-top:14px;">Excel ফাইলগুলো Process করুন</button>
-      <div class="status" id="excelStatusMsg"></div>
-    </div>
-
-    <div class="card" id="pdfSubmitCard">
+    <div class="card">
       <button type="submit" id="submitBtn">Process করে Excel ডাউনলোড করুন</button>
       <div class="status" id="statusMsg"></div>
     </div>
@@ -528,36 +492,10 @@ const customerCombo = setupCombo({
   onUnlock: () => { addressCombo.unlock(); disableAddressField(true); },
 });
 
-const outhouseExcelCard = document.getElementById('outhouseExcelCard');
-const pdfUploadCard = document.getElementById('pdfUploadCard');
-const pdfSubmitCard = document.getElementById('pdfSubmitCard');
-const outhouseFileTypeField = document.getElementById('outhouseFileTypeField');
-
-function getOuthouseFileType() {
-  const checked = document.querySelector('input[name="outhouse_file_type"]:checked');
-  return checked ? checked.value : 'pdf';
-}
-
-function toggleOuthouseExcelCard() {
-  const isOuthouse = customerTypeSel.value === 'OUT-HOUSE';
-  outhouseFileTypeField.style.display = isOuthouse ? 'block' : 'none';
-
-  const useExcel = isOuthouse && getOuthouseFileType() === 'excel';
-  outhouseExcelCard.style.display = useExcel ? 'block' : 'none';
-  pdfUploadCard.style.display = useExcel ? 'none' : 'block';
-  pdfSubmitCard.style.display = useExcel ? 'none' : 'block';
-  submitBtn.disabled = useExcel;
-}
-
-document.querySelectorAll('input[name="outhouse_file_type"]').forEach(radio => {
-  radio.addEventListener('change', toggleOuthouseExcelCard);
-});
-
 customerTypeSel.addEventListener('change', () => {
   customerCombo.unlock();
   addressCombo.unlock();
   disableAddressField(true);
-  toggleOuthouseExcelCard();
 });
 
 // --- Buyer combo ---
@@ -696,7 +634,7 @@ async function extractAndAutofill(file) {
   try {
     const fd = new FormData();
     fd.append('pdf_file', file);
-    const res = await fetch('/extract_header', { method: 'POST', body: fd });
+    const res = await fetch('/thermal/extract_header', { method: 'POST', body: fd });
     const data = await res.json();
 
     if (!res.ok) {
@@ -778,6 +716,7 @@ function resetForm() {
   addressHint.textContent = 'Customer সিলেক্ট করার পর এখানে ঠিকানার লিস্ট আসবে';
   document.getElementById('po_number').value = '';
   customerTypeSel.value = 'IN-HOUSE';
+  document.getElementById('measurement').value = '';
   document.querySelector('input[name="delivery_mode"][value="auto"]').checked = true;
   manualDateWrap.style.display = 'none';
   autoDateHint.style.display = 'block';
@@ -848,16 +787,31 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
+  // --- Measurement ফাঁকা থাকলে confirm করে নেওয়া হচ্ছে ---
+  const measurementVal = document.getElementById('measurement').value.trim();
+  if (!measurementVal) {
+    const proceed = window.confirm(
+      'Measurement ফাঁকা আছে।\n' +
+      'Measurement ছাড়াই প্রসিড করতে চান? (পরে টেমপ্লেটে ঢুকে ম্যানুয়ালি বসাতে হবে)'
+    );
+    if (!proceed) {
+      statusMsg.textContent = 'Measurement বসিয়ে আবার Process করুন, অথবা কনফার্ম করে এগিয়ে যান';
+      statusMsg.className = 'status err';
+      return;
+    }
+  }
+
   const formData = new FormData();
   formData.append('pdf_file', fileInput.files[0]);
   formData.append('customer_type', customerTypeSel.value);
   formData.append('customer_name', document.getElementById('customer_name').value.trim());
   formData.append('buyer_name', document.getElementById('buyer_name').value.trim());
   formData.append('po_number', document.getElementById('po_number').value.trim());
+  formData.append('measurement', measurementVal);
   formData.append('delivery_mode', document.querySelector('input[name="delivery_mode"]:checked').value);
   formData.append('delivery_date', deliveryDateInput.value);
   formData.append('delivery_address', addressInput.value.trim());
-  formData.append('method', 'rule_based');
+  formData.append('method', document.getElementById('method').value);
   formData.append('remark_place', document.getElementById('remark_place').checked ? '1' : '');
   formData.append('remark_address', document.getElementById('remark_address').checked ? '1' : '');
   formData.append('force_override', forceOverrideCheck.checked ? '1' : '');
@@ -869,7 +823,7 @@ form.addEventListener('submit', async (e) => {
   showOverlay('Excel ফাইল তৈরি হচ্ছে, একটু অপেক্ষা করুন...');
 
   try {
-    const res = await fetch('/process', { method: 'POST', body: formData });
+    const res = await fetch('/thermal/process', { method: 'POST', body: formData });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'কিছু একটা সমস্যা হয়েছে');
@@ -897,126 +851,6 @@ form.addEventListener('submit', async (e) => {
     hideOverlay();
   }
 });
-
-// ============================================================
-// OUT-HOUSE Excel বুকিং ফাইল (একাধিক) — আলাদা ফ্লো, /autocarton/process_outhouse_excel
-// ============================================================
-const excelDropZone = document.getElementById('excelDropZone');
-const excelFileInput = document.getElementById('excelFileInput');
-const excelFileNames = document.getElementById('excelFileNames');
-const excelSubmitBtn = document.getElementById('excelSubmitBtn');
-const excelStatusMsg = document.getElementById('excelStatusMsg');
-
-function updateExcelFileNamesLabel() {
-  const files = excelFileInput.files;
-  if (!files || !files.length) {
-    excelFileNames.textContent = '';
-    return;
-  }
-  const names = Array.from(files).map(f => f.name);
-  excelFileNames.textContent = `${files.length}টা ফাইল সিলেক্ট করা হয়েছে: ${names.join(', ')}`;
-}
-
-excelDropZone.addEventListener('click', () => excelFileInput.click());
-excelDropZone.addEventListener('dragover', e => { e.preventDefault(); excelDropZone.classList.add('drag'); });
-excelDropZone.addEventListener('dragleave', () => excelDropZone.classList.remove('drag'));
-excelDropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  excelDropZone.classList.remove('drag');
-  if (e.dataTransfer.files.length) {
-    excelFileInput.files = e.dataTransfer.files;
-    updateExcelFileNamesLabel();
-  }
-});
-excelFileInput.addEventListener('change', updateExcelFileNamesLabel);
-
-excelSubmitBtn.addEventListener('click', async () => {
-  excelStatusMsg.textContent = '';
-  excelStatusMsg.className = 'status';
-
-  if (!excelFileInput.files || !excelFileInput.files.length) {
-    excelStatusMsg.textContent = 'অন্তত একটা .xls/.xlsx ফাইল সিলেক্ট করুন';
-    excelStatusMsg.className = 'status err';
-    return;
-  }
-  if (!clientSideValidate()) {
-    excelStatusMsg.textContent = 'উপরের ফিল্ডগুলো ঠিক করুন (Customer/Buyer/Delivery Address লাল দেখানো জায়গাগুলো)';
-    excelStatusMsg.className = 'status err';
-    return;
-  }
-
-  // --- Ply ফাঁকা থাকলে confirm করে নেওয়া হচ্ছে (এক্সেলে Ply কলাম থাকলে সেটাই ব্যবহার হবে) ---
-  const plyVal = document.getElementById('outhouse_ply').value;
-  if (!plyVal) {
-    const proceed = window.confirm(
-      'Ply সিলেক্ট করা হয়নি।\n' +
-      'এক্সেল ফাইলে Ply কলাম না থাকলে Ply ছাড়াই (N/A) প্রসিড করতে চান?'
-    );
-    if (!proceed) {
-      excelStatusMsg.textContent = 'Ply সিলেক্ট করে আবার Process করুন, অথবা কনফার্ম করে এগিয়ে যান';
-      excelStatusMsg.className = 'status err';
-      return;
-    }
-  }
-
-  const formData = new FormData();
-  for (const f of excelFileInput.files) formData.append('files', f);
-  formData.append('customer_type', 'OUT-HOUSE');
-  formData.append('customer_name', document.getElementById('customer_name').value.trim());
-  formData.append('buyer_name', document.getElementById('buyer_name').value.trim());
-  formData.append('po_number', document.getElementById('po_number').value.trim());
-  formData.append('item_name', document.getElementById('outhouse_item_name').value);
-  formData.append('ply', plyVal);
-  formData.append('delivery_mode', document.querySelector('input[name="delivery_mode"]:checked').value);
-  formData.append('delivery_date', document.getElementById('delivery_date').value || '');
-  formData.append('delivery_address', addressInput.value.trim());
-
-  excelSubmitBtn.disabled = true;
-  excelSubmitBtn.innerHTML = '<span class="spinner"></span>Processing...';
-  excelStatusMsg.innerHTML = '<span class="spinner"></span>ফাইলগুলো কম্বাইন করে Excel তৈরি হচ্ছে...';
-  excelStatusMsg.className = 'status loading';
-  showOverlay(`${excelFileInput.files.length}টা ফাইল প্রসেস হচ্ছে...`);
-
-  try {
-    const res = await fetch('/autocarton/process_outhouse_excel', { method: 'POST', body: formData });
-    const warnCount = parseInt(res.headers.get('X-Warning-Count') || '0', 10);
-    const fileCount = res.headers.get('X-File-Count') || excelFileInput.files.length;
-
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || 'একটা সমস্যা হয়েছে');
-    }
-
-    const blob = await res.blob();
-    const cd = res.headers.get('Content-Disposition') || '';
-    const match = cd.match(/filename="?([^"]+)"?/);
-    const filename = match ? match[1] : 'Output.xlsx';
-
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    let msg = `${fileCount}টা ফাইল কম্বাইন করে সম্পন্ন হয়েছে — Excel ডাউনলোড হচ্ছে`;
-    if (warnCount > 0) msg += ` — ⚠️ ${warnCount}টা warning আছে, Excel-এর "Warnings" শীট দেখুন`;
-    excelStatusMsg.textContent = msg;
-    excelStatusMsg.className = warnCount > 0 ? 'status err' : 'status ok';
-    excelFileInput.value = '';
-    excelFileNames.textContent = '';
-  } catch (err) {
-    excelStatusMsg.textContent = err.message;
-    excelStatusMsg.className = 'status err';
-  } finally {
-    excelSubmitBtn.disabled = false;
-    excelSubmitBtn.innerHTML = 'Excel ফাইলগুলো Process করুন';
-    hideOverlay();
-  }
-});
-
-toggleOuthouseExcelCard();  // পেজ লোড হওয়ার সাথে সাথে সঠিক কার্ড দেখানোর জন্য (এখানে কল করা হচ্ছে যাতে submitBtn ইত্যাদি সব const আগেই ডিক্লেয়ার হয়ে যায়)
 </script>
 </body>
 </html>

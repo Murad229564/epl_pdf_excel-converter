@@ -63,6 +63,69 @@ def split_prepack(value):
     return code, seq
 
 
+# ---------------------------------------------------------------------------
+# হেডিং কলামের নাম PDF-এ কখনো কখনো লাইন-র‍্যাপ (word-wrap) হওয়ার কারণে মাঝে
+# একটা বাড়তি স্পেস ঢুকে যায় (যেমন কলাম সরু হলে "Measurement" ভেঙে
+# "Measuremen" + "t" দুই লাইনে চলে যায়, pdfplumber সেটাকে "Measuremen t"
+# হিসেবে পড়ে) — ফলে exact/substring ম্যাচ ফেইল করে এবং "Measurement কলাম
+# পাওয়া যায়নি" এরর আসে।
+#
+# সমাধান: তুলনা করার আগে হেডারের সব স্পেস মুছে ফেলা হয় (normalize) — তাহলে
+# "Measuremen t" আর "Measurement" দুটোই "measurement"-এ পরিণত হয় এবং মিলে
+# যায়। এটা যেকোনো কলামের জন্যই কাজ করে (শুধু Measurement না), তাই ভবিষ্যতে
+# অন্য কলামেও একই সমস্যা হলে এই একই মেকানিজম সেটা সামলে নেবে — নিচের
+# KNOWN_HEADERS লিস্টে শুধু ওই কলামের সঠিক বানানটা (বা বিকল্প বানান) যোগ
+# করে দিলেই হবে।
+# ---------------------------------------------------------------------------
+KNOWN_HEADERS = {
+    'EWO No': ['EWO No'],
+    'Style No': ['Style No'],
+    'Carton Type': ['Carton Type'],
+    'Carton Nature': ['Carton Nature'],
+    'Ply': ['Ply'],
+    'Measurement': ['Measurement'],
+    'Net. Weight (kgs)': ['Net. Weight (kgs)', 'Net Weight (kgs)'],
+    'Gross Weight (kgs)': ['Gross Weight (kgs)'],
+    'PONo': ['PONo', 'PO No'],
+    'Pre Pack': ['Pre Pack'],
+    'Gmt. Color': ['Gmt. Color', 'Color'],
+    'Total Pcs /Ctn': ['Total Pcs /Ctn'],
+    'Instruction': ['Instruction'],
+    'Total Pre-Pack / Qty': ['Total Pre-Pack / Qty'],
+    'Total Qty /Pre-Pack': ['Total Qty /Pre-Pack'],
+    'UOM': ['UOM'],
+    'QTY': ['QTY', 'Carton Qty'],
+    'Delivery Place': ['Delivery Place'],
+    'Delivery Address': ['Delivery Address'],
+    'Delivery Start Date': ['Delivery Start Date'],
+    'Delivery End Date': ['Delivery End Date'],
+}
+
+
+def _norm(s):
+    """সব হোয়াইটস্পেস মুছে lowercase করে — word-wrap-এর কারণে মাঝে ঢোকা
+    স্পেস বাদ দিয়ে তুলনা করার জন্য।"""
+    return re.sub(r'\s+', '', str(s or '')).lower()
+
+
+_NORM_LOOKUP = {}
+for _canonical, _variants in KNOWN_HEADERS.items():
+    for _v in _variants:
+        _NORM_LOOKUP[_norm(_v)] = _canonical
+
+
+def canonicalize_headers(columns):
+    """PDF থেকে পাওয়া (হয়তো wrap-ভাঙা) কলাম নামগুলোকে normalize করে
+    KNOWN_HEADERS-এর সঠিক canonical নামে ম্যাপ করে দেয়। যেসব কলাম চেনা
+    লিস্টে নেই, সেগুলো অপরিবর্তিত থাকে।"""
+    rename_map = {}
+    for col in columns:
+        canonical = _NORM_LOOKUP.get(_norm(col))
+        if canonical and canonical != col:
+            rename_map[col] = canonical
+    return rename_map
+
+
 def extract_header_info(pdf):
     """Pulls PO No, Customer (issuer), Buyer from the PO cover page.
     Works for this letterhead format regardless of numbers/dates."""
@@ -126,8 +189,13 @@ def extract_detail_rows(pdf):
     raw_original_df = pd.DataFrame(rows, columns=header).map(clean)
 
     df = raw_original_df.copy()
+    rename_map = canonicalize_headers(df.columns)
+    if rename_map:
+        df = df.rename(columns=rename_map)
 
-    measurement_col = next((c for c in df.columns if 'measurement' in c.lower()), None)
+    measurement_col = 'Measurement' if 'Measurement' in df.columns else next(
+        (c for c in df.columns if 'measurement' in _norm(c)), None
+    )
     if measurement_col is None:
         raise ValueError(
             "এই PDF-এর টেবিলে 'Measurement' নামের কোনো কলাম পাওয়া যায়নি। "
@@ -172,8 +240,34 @@ def to_canonical(df):
             'size': '',
             'delivery_date': r.get('Delivery Start Date', ''),
             'measurement_unit': r.get('MeasurementUnit', 'Cm'),
+            # PDF-এর 'Purchase Order Details' টেবিলে থাকা Delivery Place ও
+            # Delivery Address কলাম দুটো এখানে আলাদাভাবে রাখা হলো (থাকলে),
+            # যাতে ইউজার চাইলে Remarks কলামে এগুলো বসাতে পারেন।
+            'delivery_place_pdf': r.get('Delivery Place', ''),
+            'delivery_address_pdf': r.get('Delivery Address', ''),
         })
     return line_items
+
+
+def get_unique_delivery_info(raw_df):
+    """PDF-এর 'Purchase Order Details' টেবিলে Delivery Place ও Delivery Address
+    কলাম দুটো থেকে ইউনিক ভ্যালুগুলো বের করে দেয় (ফাঁকা বাদ দিয়ে, ক্রম অক্ষুণ্ণ রেখে) —
+    UI-তে হিন্ট হিসেবে দেখানোর জন্য। একের অধিক আলাদা ভ্যালু থাকলে ইউজার বুঝতে পারবেন
+    PDF-এ একাধিক ডেলিভারি স্থান আছে।"""
+    def uniques(col):
+        if raw_df is None or raw_df.empty or col not in raw_df.columns:
+            return []
+        seen = []
+        for v in raw_df[col]:
+            v = clean(v)
+            if v and v not in seen:
+                seen.append(v)
+        return seen
+
+    return {
+        'delivery_places': uniques('Delivery Place'),
+        'delivery_addresses': uniques('Delivery Address'),
+    }
 
 
 def process_pdf_rule_based(file_stream):
